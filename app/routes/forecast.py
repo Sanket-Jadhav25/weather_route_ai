@@ -1,6 +1,7 @@
+# app/routes/forecast.py
 from fastapi import APIRouter, Query, HTTPException
 from app.services.weather_service import get_weather_forecast
-from app.services.google_maps import parse_google_maps_url
+from app.services.google_maps import get_route_coordinates
 
 router = APIRouter(prefix="/forecast", tags=["Forecast"])
 
@@ -21,13 +22,25 @@ def get_forecast(
     try:
         # Case 1: Google Maps URL provided
         if url:
-            parsed_points = parse_google_maps_url(url)
-            return {"success": True, "coordinates": parsed_points}
+            route_coords = get_route_coordinates(url)
+            start = route_coords["start"]
+            end = route_coords["end"]
+
+            forecast_data = get_weather_forecast(
+                start["lat"], start["lon"],
+                end["lat"], end["lon"]
+            )
+
+            return {
+                "success": True,
+                "route": route_coords,
+                "forecast": forecast_data
+            }
 
         # Case 2: Coordinates provided directly
         elif None not in (start_lat, start_lon, end_lat, end_lon):
             forecast_data = get_weather_forecast(start_lat, start_lon, end_lat, end_lon)
-            return forecast_data
+            return {"success": True, "forecast": forecast_data}
 
         else:
             raise HTTPException(
@@ -37,3 +50,5 @@ def get_forecast(
 
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Unexpected error: {e}")
