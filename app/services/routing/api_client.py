@@ -8,7 +8,7 @@ GOOGLE_MAPS_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY")
 
 def get_route_from_google(start_lat, start_lon, end_lat, end_lon, profile="driving"):
     """
-    Fetch route from Google Directions API and return coordinates in normalized format.
+    Fetch route from Google Directions API and return coordinates with route details.
     """
     api_key = GOOGLE_MAPS_API_KEY
     if not api_key:
@@ -27,7 +27,8 @@ def get_route_from_google(start_lat, start_lon, end_lat, end_lon, profile="drivi
 
     print("🔗 Request URL:", response.url)
     print("📡 API Status:", data.get("status"))
-    print("⚠️ Error message:", data.get("error_message"))
+    if data.get("error_message"):
+        print("⚠️ Error message:", data.get("error_message"))
 
     if data.get("status") != "OK":
         raise ValueError(f"Google Directions API error: {data.get('status')} - {data.get('error_message')}")
@@ -35,10 +36,22 @@ def get_route_from_google(start_lat, start_lon, end_lat, end_lon, profile="drivi
     if not data["routes"]:
         raise ValueError("No routes found in Google Directions API response")
 
-    overview_polyline = data["routes"][0]["overview_polyline"]["points"]
+    # Extract route details
+    route = data["routes"][0]
+    overview_polyline = route["overview_polyline"]["points"]
     coordinates = decode_polyline(overview_polyline)
 
-    return {"coordinates": coordinates, "total_points": len(coordinates)}
+    # Extract distance and duration (convert to km and hours)
+    leg = route["legs"][0]
+    distance_km = leg["distance"]["value"] / 1000.0
+    duration_hr = leg["duration"]["value"] / 3600.0
+
+    return {
+        "coordinates": coordinates,
+        "total_points": len(coordinates),
+        "distance_km": round(distance_km, 2),
+        "duration_hr": round(duration_hr, 2)
+    }
 
 
 def decode_polyline(polyline_str):
@@ -49,7 +62,7 @@ def decode_polyline(polyline_str):
     coordinates = []
 
     while index < len(polyline_str):
-        for coord in [lat, lon]:
+        for i in range(2):
             shift, result = 0, 0
             while True:
                 b = ord(polyline_str[index]) - 63
@@ -59,7 +72,7 @@ def decode_polyline(polyline_str):
                 if b < 0x20:
                     break
             d = ~(result >> 1) if (result & 1) else (result >> 1)
-            if coord is lat:
+            if i == 0:
                 lat += d
             else:
                 lon += d

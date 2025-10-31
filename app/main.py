@@ -1,4 +1,6 @@
 # app/main.py
+import logging
+logging.basicConfig(level=logging.DEBUG)
 from fastapi import FastAPI
 from app.routes import forecast, route_forecast
 from dotenv import load_dotenv

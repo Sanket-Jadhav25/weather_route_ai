@@ -7,60 +7,60 @@ import folium
 # --- Helper functions ---
 
 def plot_route_map(data):
-    """Creates a folium map with route points and start/end markers"""
-    m = folium.Map(location=[data["data"]["start"]["lat"], data["data"]["start"]["lon"]], zoom_start=6)
+    route_points = data["data"]["weather_along_route"]
 
-    # Plot route markers
-    for wp in data["data"]["weather_along_route"]:
-        lat = wp["coordinates"]["lat"]
-        lon = wp["coordinates"]["lon"]
-        folium.CircleMarker(
+    # Start point
+    start_lat = route_points[0]["coordinates"]["lat"]
+    start_lon = route_points[0]["coordinates"]["lon"]
+
+    m = folium.Map(location=[start_lat, start_lon], zoom_start=8)
+
+    # Add route markers
+    for wp in route_points:
+        coords = wp["coordinates"]
+        lat, lon = coords["lat"], coords["lon"]
+        place_name = wp.get("place", "Unknown Location")
+        summary = wp.get("summary", "")
+
+        popup_text = (
+            f"<b>{place_name}</b><br>"
+            f"Time Offset: {wp['time_offset_hr']}h<br>"
+            f"Temp: {wp['temperature']}°C<br>"
+            f"Precipitation: {wp['precipitation']} mm<br>"
+            f"Wind: {wp['wind_speed']} km/h<br>"
+            f"<i>{summary}</i>"
+        )
+
+        folium.Marker(
             location=[lat, lon],
-            radius=5,
-            color="blue",
-            fill=True,
-            fill_color="blue"
+            popup=popup_text,
+            icon=folium.Icon(color="blue", icon="info-sign"),
         ).add_to(m)
 
-    # Add start and end markers
-    folium.Marker(
-        [data["data"]["start"]["lat"], data["data"]["start"]["lon"]],
-        popup="Start",
-        icon=folium.Icon(color="green", icon="play")
-    ).add_to(m)
-
-    folium.Marker(
-        [data["data"]["end"]["lat"], data["data"]["end"]["lon"]],
-        popup="End",
-        icon=folium.Icon(color="red", icon="stop")
+    # Draw polyline along route
+    folium.PolyLine(
+        [[wp["coordinates"]["lat"], wp["coordinates"]["lon"]] for wp in route_points],
+        color="blue",
+        weight=3,
+        opacity=0.8
     ).add_to(m)
 
     return m
 
 
 def load_weather_data(data):
-    """Returns only the next-hour weather forecast for each route point."""
+    """Returns weather forecast summary for each sampled route point."""
     all_rows = []
     for wp in data["data"]["weather_along_route"]:
-        lat = wp["coordinates"]["lat"]
-        lon = wp["coordinates"]["lon"]
-        offset = wp["time_offset_hr"]
-
-        # Just get the next-hour forecast (first record)
-        if wp["weather"]["start_point_forecast"]:
-            record = wp["weather"]["start_point_forecast"][0]
-            all_rows.append({
-                "Hour Offset": offset,
-                "Latitude": lat,
-                "Longitude": lon,
-                "Time": record["time"],
-                "Temperature (°C)": record["temperature"],
-                "Precipitation (mm)": record["precipitation"],
-                "Wind Speed (m/s)": record["wind_speed"],
-                "Weather Code": record["weathercode"]
-            })
+        all_rows.append({
+            "Place": wp.get("place", "Unknown"),
+            "Hour Offset": wp["time_offset_hr"],
+            "Temperature (°C)": wp.get("temperature"),
+            "Precipitation (mm)": wp.get("precipitation"),
+            "Wind Speed (km/h)": wp.get("wind_speed"),
+            "Summary": wp.get("summary", "N/A"),
+        })
     return pd.DataFrame(all_rows)
-
 
 
 # --- Streamlit UI ---
@@ -70,7 +70,6 @@ st.title("🌦️ Weather Route AI Assistant")
 
 route_url = st.text_input("Enter your Google Maps route URL")
 
-# Maintain state across reruns
 if "data" not in st.session_state:
     st.session_state["data"] = None
 
@@ -92,16 +91,17 @@ if st.button("Analyze Route"):
             except Exception as e:
                 st.error(f"🚨 Failed to connect: {e}")
 
+
 # --- Display stored data ---
 if st.session_state["data"]:
     data = st.session_state["data"]
 
     st.subheader("🗺️ Route Information")
-    st.write(f"**Start:** {data['data']['start']}")
-    st.write(f"**End:** {data['data']['end']}")
-    st.write(f"**Profile:** {data['data']['profile']}")
-    st.write(f"**Interval (hours):** {data['data']['interval_hours']}")
-    st.write(f"**Sampled Points:** {data['data']['total_points']}")
+    start = data['route']['start']
+    end = data['route']['end']
+    st.write(f"**Start:** ({start['lat']}, {start['lon']})")
+    st.write(f"**End:** ({end['lat']}, {end['lon']})")
+    st.write(f"**Interval (hours):** 1")
 
     st.subheader("📍 Route Map")
     route_map = plot_route_map(data)
@@ -112,10 +112,13 @@ if st.session_state["data"]:
     st.dataframe(weather_df)
 
     st.subheader("📊 Weather Summary")
-    stats = {
-        "Min Temp (°C)": weather_df["Temperature (°C)"].min(),
-        "Max Temp (°C)": weather_df["Temperature (°C)"].max(),
-        "Avg Wind Speed (m/s)": weather_df["Wind Speed (m/s)"].mean(),
-        "Total Precipitation (mm)": weather_df["Precipitation (mm)"].sum()
-    }
-    st.table(pd.DataFrame([stats]))
+    if not weather_df.empty:
+        stats = {
+            "Min Temp (°C)": weather_df["Temperature (°C)"].min(),
+            "Max Temp (°C)": weather_df["Temperature (°C)"].max(),
+            "Avg Wind Speed (km/h)": weather_df["Wind Speed (km/h)"].mean(),
+            "Total Precipitation (mm)": weather_df["Precipitation (mm)"].sum()
+        }
+        st.table(pd.DataFrame([stats]))
+    else:
+        st.info("No weather data available.")
