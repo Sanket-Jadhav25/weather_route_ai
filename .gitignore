@@ -8,7 +8,7 @@ __pycache__/
 env/
 venv/
 *.log
-
+weather_forecast_ai/
 # VSCode / IDE
 .vscode/
 .idea/

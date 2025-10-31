@@ -1,6 +1,8 @@
 # app/main.py
 from fastapi import FastAPI
 from app.routes import forecast, route_forecast
+from dotenv import load_dotenv
+load_dotenv()
 
 app = FastAPI(title="Weather Route AI")
 
